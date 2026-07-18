@@ -60,6 +60,7 @@ import com.github.tvbox.osc.ui.tv.widget.ViewObj;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
@@ -1108,7 +1109,7 @@ public class LivePlayActivity extends BaseActivity {
     //频道列表
     @SuppressLint("NotifyDataSetChanged")
     public  void divLoadEpgRight(View view) {
-        if (epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
+        if (epgListAdapter.getData().isEmpty()) {
             updateEpgPanelState(false);
             return;
         }
@@ -2741,7 +2742,15 @@ public class LivePlayActivity extends BaseActivity {
         return idx >= 0 ? idx : -1;
     }
 
+    private boolean liveAssetLoaded = false;
+    private static final String LIVE_ASSET_SOURCE = "tv_source.txt";
+
     private void initLiveChannelList() {
+        // 每次进入直播先以内置 assets/tv_source.txt 作为基础源加载，
+        // 之后仍可通过设置菜单切换到已配置的其它直播源。
+        if (!liveAssetLoaded && loadLiveChannelsFromAsset()) {
+            return;
+        }
         if (ApiConfig.get().shouldReloadLiveConfig()) {
             loadLiveConfigOnEnter();
             return;
@@ -2759,6 +2768,43 @@ public class LivePlayActivity extends BaseActivity {
             liveChannelGroupList.addAll(list);
             showSuccess();
             initLiveState();
+        }
+    }
+
+    /**
+     * 读取内置的 M3U 直播源（assets/tv_source.txt），交由已有的 M3U 解析器解析后填充频道列表。
+     * TxtSubscribe.parseToJsonArray 已支持 #EXTM3U 格式（group-title / tvg-name / tvg-logo 等），
+     * 因此无需额外的格式转换。
+     *
+     * @return 成功加载并填充频道列表返回 true，否则 false（交由后续远程配置流程处理）。
+     */
+    private boolean loadLiveChannelsFromAsset() {
+        liveAssetLoaded = true;
+        try {
+            String content = FileUtils.getAsOpen(LIVE_ASSET_SOURCE);
+            if (content == null || content.trim().isEmpty()) {
+                return false;
+            }
+            JsonArray livesArray = TxtSubscribe.parseToJsonArray(content);
+            if (livesArray == null || livesArray.size() == 0) {
+                return false;
+            }
+            // 内置源为纯 M3U 列表，清理可能残留的自定义请求头，避免影响播放。
+            Hawk.put(HawkConfig.LIVE_WEB_HEADER, null);
+            ApiConfig.get().loadLives(livesArray);
+            List<LiveChannelGroup> list = ApiConfig.get().getChannelGroupList();
+            if (list.isEmpty()) {
+                return false;
+            }
+            initLiveObj();
+            liveChannelGroupList.clear();
+            liveChannelGroupList.addAll(list);
+            showSuccess();
+            initLiveState();
+            return true;
+        } catch (Throwable th) {
+            th.printStackTrace();
+            return false;
         }
     }
 
