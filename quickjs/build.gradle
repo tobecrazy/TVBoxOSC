@@ -3,15 +3,18 @@ plugins {
 }
 
 android {
-    compileSdkVersion 33
+    // Distinct from the wrapper-android AAR which already owns com.whl.quickjs.android
+    namespace "com.whl.quickjs.wrapper"
+    compileSdk 37
 
     buildFeatures {
         buildConfig false
     }
 
     defaultConfig {
-        minSdkVersion 19
-        targetSdkVersion 28
+        minSdk 19
+        //noinspection ExpiredTargetSdkVersion
+        targetSdk 28
     }
 
     buildTypes {
@@ -23,8 +26,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 

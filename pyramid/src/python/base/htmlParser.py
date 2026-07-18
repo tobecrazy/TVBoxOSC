@@ -5,7 +5,7 @@
 # Date  : 2022/8/25
 # upDate  : 2022/11/17 支持 -- 剔除元素 多个剔除
 
-import ujson
+import json as ujson  # ujson has no Chaquopy wheel for Python 3.13; stdlib json is API-compatible for loads()
 from pyquery import PyQuery as pq
 from urllib.parse import urljoin
 import re
