@@ -9,6 +9,10 @@
     //采集接口类型		        0:xml 1:json 3:jar 4:remote
     //parses解析类型		        0:嗅探,自带播放器 1:解析,返回直链
     //直播参数说明                   ua:用户自定义ua epg:节目网址 logo:台标网址
+
+=== 直播源 / Live Stream Sources ===
+
+    https://zilong7728.github.io/Collect-IPTV/
     
     {
 	"spider": "./your.jar",
