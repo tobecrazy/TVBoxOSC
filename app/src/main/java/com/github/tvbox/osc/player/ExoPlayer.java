@@ -4,17 +4,20 @@ import android.content.Context;
 import android.util.Pair;
 
 import com.github.tvbox.osc.util.AudioTrackMemory;
+import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.RenderersFactory;
 import com.google.android.exoplayer2.Tracks;
 import com.google.android.exoplayer2.source.TrackGroup;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
+import com.orhanobut.hawk.Hawk;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -28,16 +31,37 @@ public class ExoPlayer extends ExoMediaPlayer {
 
     public ExoPlayer(Context context) {
         super(context);
-        setLoadControl(new DefaultLoadControl.Builder()
+        setLoadControl(buildLoadControl());
+        setRenderersFactory(buildRenderersFactory(context));
+        LOG.i("echo-exo-low-memory-load-control");
+        memory = AudioTrackMemory.getInstance(context);
+    }
+
+    // 直播起播前的预缓存时长：起播前先缓存 30s 再播放，起播后继续在后台缓存到 maxBuffer。
+    private static final int LIVE_PREBUFFER_MS = 30 * 1000;
+    private static final int LIVE_MAX_BUFFER_MS = 60 * 1000;
+
+    private LoadControl buildLoadControl() {
+        if (Hawk.get(HawkConfig.PLAYER_IS_LIVE, false)) {
+            LOG.i("echo-exo-live-prebuffer-30s");
+            // bufferForPlayback = 30s：达到 30s 高水位后才起播；起播后继续缓存到 maxBuffer。
+            // 代价是直播延迟固定落后实时约 30s。
+            return new DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                            LIVE_PREBUFFER_MS,
+                            LIVE_MAX_BUFFER_MS,
+                            LIVE_PREBUFFER_MS,
+                            LIVE_PREBUFFER_MS)
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build();
+        }
+        return new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                         DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
-                .build());
-        setRenderersFactory(buildRenderersFactory(context));
-        LOG.i("echo-exo-low-memory-load-control");
-        memory = AudioTrackMemory.getInstance(context);
+                .build();
     }
 
     private RenderersFactory buildRenderersFactory(Context context) {
