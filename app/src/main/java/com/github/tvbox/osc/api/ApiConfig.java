@@ -1532,7 +1532,7 @@ public class ApiConfig {
     }
 
     public int getLiveConnectTimeoutSeconds() {
-        return (Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 1) + 1) * 5;
+        return (Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 0) + 1) * 5;
     }
 
     private boolean isLiveSpiderApi(String api) {

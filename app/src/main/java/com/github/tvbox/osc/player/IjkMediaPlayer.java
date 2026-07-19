@@ -34,8 +34,11 @@ public class IjkMediaPlayer extends IjkPlayer {
     private static final String DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
     private static final String DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.9";
 
-    // 直播起播前的预缓存时长（高水位）：起播前先缓存 30s 再播放。
-    private static final int LIVE_PREBUFFER_MS = 30 * 1000;
+    // 直播缓冲策略：快速起播 + 大后台缓存。
+    // 起播只需 LIVE_START_BUFFER_MS 的高水位即可出画面；起播后 ijk 的读线程持续在后台
+    // 缓存到 LIVE_MAX_CACHE_MS，靠大缓存池抗抖动。
+    // 注意：起播水位必须明显小于 LivePlayActivity 里 BUFFERING 换源看门狗的超时(默认 5s)。
+    private static final int LIVE_START_BUFFER_MS = 2_500;
     // 直播运行中的最大缓存时长：起播后继续在后台缓存到此上限。
     private static final int LIVE_MAX_CACHE_MS = 60 * 1000;
 
@@ -78,12 +81,12 @@ public class IjkMediaPlayer extends IjkPlayer {
 
         if(Hawk.get(HawkConfig.PLAYER_IS_LIVE, false)){
             LOG.i("echo-type-直播");
-            // 起播前先缓存约 LIVE_PREBUFFER_MS，达到高水位后再起播，起播后继续在后台
-            // 缓存到 LIVE_MAX_CACHE_MS。这样能抗抖动，代价是直播延迟固定落后实时约 30s。
+            // 起播只需缓存约 LIVE_START_BUFFER_MS 即出画面，起播后读线程继续在后台
+            // 缓存到 LIVE_MAX_CACHE_MS。快速起播 + 大后台缓存抗抖动，且不会被换源看门狗误判。
             mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1);
-            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "first-high-water-mark-ms", LIVE_PREBUFFER_MS);
-            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "next-high-water-mark-ms", LIVE_PREBUFFER_MS);
-            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "last-high-water-mark-ms", LIVE_PREBUFFER_MS);
+            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "first-high-water-mark-ms", LIVE_START_BUFFER_MS);
+            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "next-high-water-mark-ms", LIVE_START_BUFFER_MS);
+            mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "last-high-water-mark-ms", LIVE_START_BUFFER_MS);
             mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max_cached_duration", LIVE_MAX_CACHE_MS);
             mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_FORMAT, "flush_packets", 0);
             mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_PLAYER, "min-frames", 100);

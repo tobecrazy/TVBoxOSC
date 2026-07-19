@@ -37,21 +37,27 @@ public class ExoPlayer extends ExoMediaPlayer {
         memory = AudioTrackMemory.getInstance(context);
     }
 
-    // 直播起播前的预缓存时长：起播前先缓存 30s 再播放，起播后继续在后台缓存到 maxBuffer。
-    private static final int LIVE_PREBUFFER_MS = 30 * 1000;
-    private static final int LIVE_MAX_BUFFER_MS = 60 * 1000;
+    // 直播缓冲策略：快速起播 + 大后台缓存。
+    // 起播只需 LIVE_START_BUFFER_MS 即可出画面；ExoPlayer 的 Loader 线程会在后台持续把
+    // 缓冲填充到 LIVE_MAX_BUFFER_MS，靠大缓存池抗抖动，无需自建线程。
+    // 注意：起播水位必须明显小于 LivePlayActivity 里 BUFFERING 换源看门狗的超时(默认 5s)，
+    // 否则起播还没完成就会被误判为卡顿而换源（这正是之前 30s 预缓存失效的根因）。
+    private static final int LIVE_START_BUFFER_MS = 2_500;          // 起播水位：缓存约 2.5s 即出画面
+    private static final int LIVE_REBUFFER_START_MS = 3_000;        // 卡顿恢复水位：小于看门狗超时，优先自恢复
+    private static final int LIVE_MIN_BUFFER_MS = 15_000;           // 低于此值恢复后台加载，持续补满缓存
+    private static final int LIVE_MAX_BUFFER_MS = 60_000;           // 后台缓存上限：越大越抗卡顿
+    private static final int LIVE_TARGET_BUFFER_BYTES = 64 * 1024 * 1024;
 
     private LoadControl buildLoadControl() {
         if (Hawk.get(HawkConfig.PLAYER_IS_LIVE, false)) {
-            LOG.i("echo-exo-live-prebuffer-30s");
-            // bufferForPlayback = 30s：达到 30s 高水位后才起播；起播后继续缓存到 maxBuffer。
-            // 代价是直播延迟固定落后实时约 30s。
+            LOG.i("echo-exo-live-fast-start-large-buffer");
             return new DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                            LIVE_PREBUFFER_MS,
+                            LIVE_MIN_BUFFER_MS,
                             LIVE_MAX_BUFFER_MS,
-                            LIVE_PREBUFFER_MS,
-                            LIVE_PREBUFFER_MS)
+                            LIVE_START_BUFFER_MS,
+                            LIVE_REBUFFER_START_MS)
+                    .setTargetBufferBytes(LIVE_TARGET_BUFFER_BYTES)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build();
         }

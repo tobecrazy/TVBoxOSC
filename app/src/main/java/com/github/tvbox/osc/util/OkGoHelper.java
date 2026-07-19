@@ -53,6 +53,7 @@ import xyz.doikki.videoplayer.exo.ExoMediaSourceHelper;
 
 public class OkGoHelper {
     public static final long DEFAULT_MILLISECONDS = 10000;      //默认的超时时间
+    public static final long EXO_PLAY_TIMEOUT_MS = 30000;       //播放(直播/点播)客户端超时，直播长连接需放宽
 
     // 内置doh json
     private static final String dnsConfigJson = "["
@@ -100,6 +101,11 @@ public class OkGoHelper {
         builder.proxySelector(proxySelector());
         builder.proxyAuthenticator(proxyAuthenticator());
 
+        // 直播/点播播放走此客户端。默认继承自 getDefaultClient() 的 10s 超时，对直播长连接
+        // 偏短，弱网下容易触发底层重连导致卡顿；这里放宽到 30s。
+        builder.connectTimeout(EXO_PLAY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        builder.readTimeout(EXO_PLAY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        builder.writeTimeout(EXO_PLAY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 
         try {
             setOkHttpSsl(builder);

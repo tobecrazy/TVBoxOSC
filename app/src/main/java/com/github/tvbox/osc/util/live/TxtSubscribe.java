@@ -68,6 +68,28 @@ public class TxtSubscribe {
         return parseTxtToJsonArray(str);
     }
 
+    /**
+     * 将 extra 解析结果合并进 base（原地修改并返回 base）。
+     * 同名分组下的同名频道，其 URL 作为备用线路追加到已有频道后面（去重）；
+     * 因此主源（base）的地址保持在前，作为默认线路，备用源（extra）排在其后。
+     */
+    public static JsonArray mergeJsonArray(JsonArray base, JsonArray extra) {
+        if (base == null) base = new JsonArray();
+        if (extra == null) return base;
+        for (JsonElement groupElement : extra) {
+            if (!groupElement.isJsonObject()) continue;
+            JsonObject extraGroup = groupElement.getAsJsonObject();
+            String groupName = normalizeGroupName(DefaultConfig.safeJsonString(extraGroup, "group", DEFAULT_GROUP_NAME));
+            JsonObject baseGroup = findOrCreateGroup(base, groupName);
+            if (!extraGroup.has("channels") || !extraGroup.get("channels").isJsonArray()) continue;
+            for (JsonElement channelElement : extraGroup.getAsJsonArray("channels")) {
+                if (!channelElement.isJsonObject()) continue;
+                addChannel(baseGroup, channelElement.getAsJsonObject());
+            }
+        }
+        return base;
+    }
+
     private static JsonArray normalizeJsonArray(JsonArray groups) {
         JsonArray result = new JsonArray();
         for (JsonElement groupElement : groups) {

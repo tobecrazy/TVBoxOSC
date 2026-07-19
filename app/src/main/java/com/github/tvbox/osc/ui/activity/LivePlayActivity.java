@@ -170,6 +170,7 @@ public class LivePlayActivity extends BaseActivity {
     private int currentLiveLookBackIndex = -1;
     private int currentLiveChangeSourceTimes = 0;
     private boolean allowLiveSwitchPlayer = true;
+    private boolean liveLagSwitchOnly = false;
     private LiveChannelItem currentLiveChannelItem = null;
     private String pendingLiveRefreshChannelName = null;
     private int pendingLiveRefreshSourceIndex = -1;
@@ -2252,14 +2253,17 @@ public class LivePlayActivity extends BaseActivity {
                     case VideoView.STATE_ERROR:
                     case VideoView.STATE_PLAYBACK_COMPLETED:
                         // 错误或播放结束状态：播放器遇到错误或播放完毕时，
-                        // 启动自动换源任务，等待3秒后尝试切换至备选源
+                        // 先尝试切换解码内核重播当前地址，失败再切备用线路（见 mConnectTimeoutChangeSourceRun）。
                         hideSwitchChannelSnapshot();
+                        liveLagSwitchOnly = false;
                         mHandler.postDelayed(mConnectTimeoutChangeSourceRun, 3500);
                         break;
                     case VideoView.STATE_PREPARING:
                     case VideoView.STATE_BUFFERING:
-                        // 正在准备或缓冲状态：表示当前源正在加载中
-                        mHandler.postDelayed(mConnectTimeoutChangeSourceRun, (Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 1) + 1) * 5000L);
+                        // 正在准备或缓冲状态：表示当前源正在加载/卡顿中。
+                        // 超时后直接切到下一条备用线路（保持频道不变），不做解码内核切换，尽快恢复画面。
+                        liveLagSwitchOnly = true;
+                        mHandler.postDelayed(mConnectTimeoutChangeSourceRun, (Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 0) + 1) * 5000L);
                         break;
                     default:
                         LOG.i("echo-Unexpected live_play state: " + playState);
@@ -2307,7 +2311,9 @@ public class LivePlayActivity extends BaseActivity {
     private Runnable mConnectTimeoutChangeSourceRun = new Runnable() {
         @Override
         public void run() {
-            if (switchLivePlayerAndReplay()) {
+            // 卡顿(缓冲/准备超时)时直接切下一条备用线路，跳过解码内核切换；
+            // 仅在硬错误/播放结束时才先尝试切换解码内核重播当前地址。
+            if (!liveLagSwitchOnly && switchLivePlayerAndReplay()) {
                 return;
             }
             currentLiveChangeSourceTimes++;
@@ -2744,6 +2750,7 @@ public class LivePlayActivity extends BaseActivity {
 
     private boolean liveAssetLoaded = false;
     private static final String LIVE_ASSET_SOURCE = "tv_source.txt";
+    private static final String LIVE_ASSET_SOURCE_BACKUP = "tv_source_bak.txt";
 
     private void initLiveChannelList() {
         // 每次进入直播先以内置 assets/tv_source.txt 作为基础源加载，
@@ -2788,6 +2795,15 @@ public class LivePlayActivity extends BaseActivity {
             JsonArray livesArray = TxtSubscribe.parseToJsonArray(content);
             if (livesArray == null || livesArray.size() == 0) {
                 return false;
+            }
+            // 合并内置备用源（tv_source_bak.txt）：同名频道的地址作为备用线路追加，
+            // 主源地址保持在前作为默认线路，卡顿/超时时可自动切到备用线路而不换台。
+            String backupContent = FileUtils.getAsOpen(LIVE_ASSET_SOURCE_BACKUP);
+            if (backupContent != null && !backupContent.trim().isEmpty()) {
+                JsonArray backupArray = TxtSubscribe.parseToJsonArray(backupContent);
+                if (backupArray != null && backupArray.size() > 0) {
+                    livesArray = TxtSubscribe.mergeJsonArray(livesArray, backupArray);
+                }
             }
             // 内置源为纯 M3U 列表，清理可能残留的自定义请求头，避免影响播放。
             Hawk.put(HawkConfig.LIVE_WEB_HEADER, null);
@@ -3080,7 +3096,7 @@ public class LivePlayActivity extends BaseActivity {
     private void initLiveSettingGroupList() {
         liveSettingGroupList=ApiConfig.get().getLiveSettingGroupList();
         if (liveSettingGroupList.size() < 7) return;
-        liveSettingGroupList.get(3).getLiveSettingItems().get(Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 1)).setItemSelected(true);
+        liveSettingGroupList.get(3).getLiveSettingItems().get(Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 0)).setItemSelected(true);
         liveSettingGroupList.get(4).getLiveSettingItems().get(0).setItemSelected(Hawk.get(HawkConfig.LIVE_SHOW_TIME, false));
         liveSettingGroupList.get(4).getLiveSettingItems().get(1).setItemSelected(Hawk.get(HawkConfig.LIVE_SHOW_NET_SPEED, false));
         liveSettingGroupList.get(4).getLiveSettingItems().get(2).setItemSelected(Hawk.get(HawkConfig.LIVE_SHOW_RESOLUTION, false));
